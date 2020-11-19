@@ -56,7 +56,6 @@ class SSLScan:
                 return self.poll(start=True)
             raise Exception("ssllabs returned status code %d" % e.status)
 
-        print(data)
         if data['status'] == "ERROR":
             raise Exception(data['statusMessage'])
 
@@ -104,7 +103,7 @@ if __name__ == "__main__":
     signal.alarm(900)
 
     desc = "%prog check server's ssl score"
-    parser = OptionParser(description=desc, version="%prog version 1.0")
+    parser = OptionParser(description=desc, version="%prog version 1.01")
 
     gen_opts = OptionGroup(parser, "Generic options")
     thres_opts = OptionGroup(parser, "Threshold options")
