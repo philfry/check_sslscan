@@ -11,6 +11,7 @@ from urllib.parse import urlencode, quote
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
+import sys
 import json
 import signal
 import time
@@ -22,10 +23,11 @@ scores = {
 
 class SSLScan:
 
-    def __init__(self, host, publish=False, maxAge=0, nocache=False, trust=True):
+    def __init__(self, host, publish=False, maxAge=0, nocache=False, trust=True, debug=False):
         self.uri = "https://api.ssllabs.com/api/v2/analyze?host=%s&" % host
         self.args = ['publish=%s' % ("off","on")[publish]]
         self.trust = trust
+        self.debug = debug
         if nocache: self.args += ['startNew=on']
         else:
             self.args += ['fromCache=on']
@@ -48,6 +50,7 @@ class SSLScan:
         try:
             with urlopen(req, None, 60) as fh:
                 data = json.loads(fh.read())
+                if self.debug: print(data, file=sys.stderr)
         except json.decoder.JSONDecodeError:
             raise Exception("invalid json received")
         except Exception as e:
@@ -60,9 +63,8 @@ class SSLScan:
             raise Exception(data['statusMessage'])
 
         if data['status'] == "READY":
-            if self.trust:
-                return list(set([e['grade'] for e in data['endpoints']]))
-            return list(set([e['gradeTrustIgnored'] for e in data['endpoints']]))
+            grade_k = ("gradeTrustIgnored", "grade")[self.trust]
+            return list(set([e[grade_k] for e in data['endpoints'] if grade_k in e]))
 
         if data['status'] in ['DNS', 'IN_PROGRESS']:
             time.sleep(10)
@@ -86,7 +88,8 @@ def main():
         publish=options.publish,
         maxAge=options.maxage,
         nocache=options.nocache,
-        trust=not options.ignoretrust
+        trust=not options.ignoretrust,
+        debug=options.debug
     )
 
     try: res = sslscan.get_results()
@@ -103,7 +106,7 @@ if __name__ == "__main__":
     signal.alarm(900)
 
     desc = "%prog check server's ssl score"
-    parser = OptionParser(description=desc, version="%prog version 1.01")
+    parser = OptionParser(description=desc, version="%prog version 1.1")
 
     gen_opts = OptionGroup(parser, "Generic options")
     thres_opts = OptionGroup(parser, "Threshold options")
@@ -150,6 +153,10 @@ if __name__ == "__main__":
         help="publish results at Qualys SSL Labs"
     )
 
+    gen_opts.add_option("-d", "--debug", dest="debug",
+        action="store_true", default=False,
+        help="debug mode"
+    )
     (options, args) = parser.parse_args()
 
     if options.warn not in scores or options.crit not in scores:
