@@ -53,12 +53,18 @@ class SSLScan:
                 if self.debug: print(data, file=sys.stderr)
         except json.decoder.JSONDecodeError:
             raise Exception("invalid json received")
+        except URLError as e:
+            raise Exception(e.reason)
         except Exception as e:
             if e.status == 529:
                 time.sleep(10)
                 return self.poll(start=True)
             raise Exception("ssllabs returned status code %d" % e.status)
 
+        if "errors" in data:
+            raise Exception(
+                "\n".join([i['message'] for i in data['errors']])
+            )
         if data['status'] == "ERROR":
             raise Exception(data['statusMessage'])
 
@@ -93,7 +99,7 @@ def main():
     )
 
     try: res = sslscan.get_results()
-    except Exception as e: nagexit(2, str(e))
+    except Exception as e: nagexit(3, str(e))
 
     rc = 0
     for r in res:
