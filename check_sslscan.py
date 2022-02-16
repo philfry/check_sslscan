@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 
 import ssl
 from urllib.parse import urlencode, quote
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, ProxyHandler, build_opener, install_opener
 from urllib.error import URLError, HTTPError
 
 import sys
@@ -25,11 +25,15 @@ scores = {
 
 class SSLScan:
 
-    def __init__(self, host, publish=False, maxAge=0, nocache=False, trust=True, debug=False):
+    def __init__(self, host, publish=False, maxAge=0, nocache=False, trust=True, proxy=None, debug=False):
         self.uri = "https://api.ssllabs.com/api/v2/analyze?host=%s&" % host
         self.args = ['publish=%s' % ("off","on")[publish]]
         self.trust = trust
         self.debug = debug
+        if proxy is not None:
+            proxy_opener = build_opener(ProxyHandler({"https":proxy}))
+            install_opener(proxy_opener)
+
         if nocache: self.args += ['startNew=on']
         else:
             self.args += ['fromCache=on']
@@ -97,6 +101,7 @@ def main():
         maxAge=options.maxage,
         nocache=options.nocache,
         trust=not options.ignoretrust,
+        proxy=options.proxy,
         debug=options.debug
     )
 
@@ -162,6 +167,11 @@ if __name__ == "__main__":
     gen_opts.add_argument("-p", "--publish", dest="publish",
         action="store_true", default=False,
         help="publish results at Qualys SSL Labs"
+    )
+
+    gen_opts.add_argument("--proxy", dest="proxy",
+        type=str, metavar="ADDRESS", action="store",
+        help="use proxy to connect to the ssllabs api"
     )
 
     gen_opts.add_argument("-d", "--debug", dest="debug",
