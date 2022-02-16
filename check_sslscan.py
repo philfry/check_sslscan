@@ -37,7 +37,7 @@ class SSLScan:
 
         self.headers = {
             'Accept': "application/json",
-            'User-Agent': "nagios/check_sslscan"
+            'User-Agent': f"nagios/check_sslscan {__version__}"
         }
 
     def get_results(self):
