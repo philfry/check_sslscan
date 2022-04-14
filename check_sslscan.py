@@ -16,7 +16,7 @@ import json
 import signal
 import time
 
-__version__ = "1.2"
+__version__ = "1.3"
 
 scores = {
     'A+': 7, 'A':  6, 'A-': 5, 'B':  4, 'C':  3,
