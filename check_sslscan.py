@@ -16,7 +16,7 @@ import json
 import signal
 import time
 
-__version__ = "1.3"
+__version__ = "1.3.1"
 
 scores = {
     'A+': 7, 'A':  6, 'A-': 5, 'B':  4, 'C':  3,
@@ -82,7 +82,9 @@ class SSLScan:
             return list(set([e[grade_k] for e in data['endpoints'] if grade_k in e]))
 
         if data['status'] in ['DNS', 'IN_PROGRESS']:
-            time.sleep(max([5]+[e['eta'] for e in data['endpoints']]))
+            try: sleeptime = max([5]+[e['eta'] for e in data['endpoints']])
+            except KeyError: sleeptime = 5
+            time.sleep(sleeptime)
             return self.poll()
 
         raise Exception("this should never happen, status %s" % data['status'])
