@@ -79,7 +79,7 @@ class SSLScan:
             return list(set([e[grade_k] for e in data['endpoints'] if grade_k in e]))
 
         if data['status'] in ['DNS', 'IN_PROGRESS']:
-            time.sleep(10)
+            time.sleep(max([5]+[e['eta'] for e in data['endpoints']]))
             return self.poll()
 
         raise Exception("this should never happen, status %s" % data['status'])
