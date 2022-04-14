@@ -75,6 +75,9 @@ class SSLScan:
             raise Exception(data['statusMessage'])
 
         if data['status'] == "READY":
+            for e in data['endpoints']:
+                if e['progress'] < 0:
+                    raise Exception(f"{e['ipAddress']}: {e['statusMessage']}")
             grade_k = ("gradeTrustIgnored", "grade")[self.trust]
             return list(set([e[grade_k] for e in data['endpoints'] if grade_k in e]))
 
