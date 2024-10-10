@@ -6,38 +6,44 @@
 
 from argparse import ArgumentParser
 
-import ssl
-from urllib.parse import urlencode, quote
 from urllib.request import Request, urlopen, ProxyHandler, build_opener, install_opener
-from urllib.error import URLError, HTTPError
+from urllib.error import URLError
 
 import sys
 import json
 import signal
 import time
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 
 scores = {
     'A+': 7, 'A':  6, 'A-': 5, 'B':  4, 'C':  3,
     'D':  2, 'E':  1, 'F':  0, 'T':  0, 'M':  0
 }
 
+class SSLScanE(Exception):
+    pass
+
 class SSLScan:
 
-    def __init__(self, host, publish=False, maxAge=0, nocache=False, trust=True, proxy=None, debug=False):
-        self.uri = "https://api.ssllabs.com/api/v2/analyze?host=%s&" % host
-        self.args = ['publish=%s' % ("off","on")[publish]]
-        self.trust = trust
-        self.debug = debug
+    def __init__(self, host, **kwargs):
+        self.uri = f"https://api.ssllabs.com/api/v2/analyze?host={host}&"
+        self.args = ['publish=' + ("off","on")[kwargs.get('publish', False)]]
+        self.trust = kwargs.get('trust', True)
+        self.debug = kwargs.get('debug', False)
+
+        proxy = kwargs.get('proxy')
         if proxy is not None:
             proxy_opener = build_opener(ProxyHandler({"https":proxy}))
             install_opener(proxy_opener)
 
-        if nocache: self.args += ['startNew=on']
+        if kwargs.get('nocache', False):
+            self.args += ['startNew=on']
         else:
             self.args += ['fromCache=on']
-            if maxAge > 0: self.args += ['maxAge=%d' % maxAge]
+            maxAge = kwargs.get('maxAge', 0)
+            if maxAge > 0:
+                self.args += [f'maxAge={maxAge}']
 
         self.headers = {
             'Accept': "application/json",
@@ -49,46 +55,48 @@ class SSLScan:
 
     def poll(self, start=False):
 
-        if start: uri = self.uri + ("&".join(self.args))
-        else: uri = self.uri + "all=done"
+        uri = self.uri + ("all=done",("&".join(self.args)))[start]
 
         req = Request(uri, headers=self.headers)
         try:
             with urlopen(req, None, 60) as fh:
                 data = json.loads(fh.read())
-                if self.debug: print(data, file=sys.stderr)
+                if self.debug:
+                    print(data, file=sys.stderr)
         except json.decoder.JSONDecodeError:
-            raise Exception("invalid json received")
+            raise SSLScanE("invalid json received")
         except URLError as e:
             try:
                 if e.status == 529:
                     time.sleep(10)
                     return self.poll(start=True)
-                raise Exception(f"ssllabs returned status code {e.status}")
+                raise SSLScanE(f"ssllabs returned status code {e.status}")
             except AttributeError:
-                raise Exception(f"ssllabs returned {e.reason}")
+                raise SSLScanE(f"ssllabs returned {e.reason}")
 
         if "errors" in data:
-            raise Exception(
+            raise SSLScanE(
                 "\n".join([i['message'] for i in data['errors']])
             )
         if data['status'] == "ERROR":
-            raise Exception(data['statusMessage'])
+            raise SSLScanE(data['statusMessage'])
 
         if data['status'] == "READY":
             for e in data['endpoints']:
                 if e['progress'] < 0:
-                    raise Exception(f"{e['ipAddress']}: {e['statusMessage']}")
+                    raise SSLScanE(f"{e['ipAddress']}: {e['statusMessage']}")
             grade_k = ("gradeTrustIgnored", "grade")[self.trust]
             return list(set([e[grade_k] for e in data['endpoints'] if grade_k in e]))
 
         if data['status'] in ['DNS', 'IN_PROGRESS']:
-            try: sleeptime = max([5]+[e['eta'] for e in data['endpoints']])
-            except KeyError: sleeptime = 5
+            try:
+                sleeptime = max([5]+[e['eta'] for e in data['endpoints']])
+            except KeyError:
+                sleeptime = 5
             time.sleep(sleeptime)
             return self.poll()
 
-        raise Exception("this should never happen, status %s" % data['status'])
+        raise SSLScanE(f"this should never happen, status {data['status']}")
 
 
 def nagexit(exitc, status):
@@ -96,7 +104,7 @@ def nagexit(exitc, status):
         {0:'OK',1:'WARNING',2:'CRITICAL',3:'UNKNOWN'}[exitc],
         status
     ))
-    exit(exitc)
+    sys.exit(exitc)
 
 def timeouthandler(signum, frame):
     nagexit(3, "timeout")
@@ -111,13 +119,17 @@ def main():
         debug=options.debug
     )
 
-    try: res = sslscan.get_results()
-    except Exception as e: nagexit(3, str(e))
+    try:
+        res = sslscan.get_results()
+    except SSLScanE as e:
+        nagexit(3, str(e))
 
     rc = 0
     for r in res:
-        if scores[r] <= scores[options.crit] and rc < 2: rc = 2
-        if scores[r] <= scores[options.warn] and rc < 1: rc = 1
+        if scores[r] <= scores[options.crit] and rc < 2:
+            rc = 2
+        if scores[r] <= scores[options.warn] and rc < 1:
+            rc = 1
     nagexit(rc, "score(s) %s" % ",".join(res))
 
 if __name__ == "__main__":
