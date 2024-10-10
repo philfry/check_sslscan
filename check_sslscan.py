@@ -60,12 +60,13 @@ class SSLScan:
         except json.decoder.JSONDecodeError:
             raise Exception("invalid json received")
         except URLError as e:
-            raise Exception(e.reason)
-        except Exception as e:
-            if e.status == 529:
-                time.sleep(10)
-                return self.poll(start=True)
-            raise Exception("ssllabs returned status code %d" % e.status)
+            try:
+                if e.status == 529:
+                    time.sleep(10)
+                    return self.poll(start=True)
+                raise Exception(f"ssllabs returned status code {e.status}")
+            except AttributeError:
+                raise Exception(f"ssllabs returned {e.reason}")
 
         if "errors" in data:
             raise Exception(
